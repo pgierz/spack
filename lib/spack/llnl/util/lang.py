@@ -118,15 +118,14 @@ def get_calling_module_name():
         )
 
     module_name = caller_locals["__module__"]
-    base_name = module_name.split(".")[-1]
-    return base_name
+    return module_name.split(".")[-1]
 
 
 def attr_required(obj, attr_name):
     """Ensure that a class has a required attribute."""
     if not hasattr(obj, attr_name):
         raise RequiredAttributeError(
-            "No required attribute '%s' in class '%s'" % (attr_name, obj.__class__.__name__)
+            f"No required attribute '{attr_name}' in class '{obj.__class__.__name__}'"
         )
 
 
@@ -162,7 +161,7 @@ def union_dicts(*dicts):
     """
     result = {}
     for d in dicts:
-        result.update(d)
+        result |= d
     return result
 
 
@@ -240,7 +239,7 @@ def decorator_with_or_without_args(decorator):
     # See https://stackoverflow.com/questions/653368 for more on this
     @functools.wraps(decorator)
     def new_dec(*args, **kwargs):
-        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        if len(args) == 1 and not kwargs and callable(args[0]):
             # actual decorated function
             return decorator(args[0])
         else:
@@ -269,7 +268,7 @@ def key_ordering(cls):
         setattr(cls, name, value)
 
     if not has_method(cls, "_cmp_key"):
-        raise TypeError("'%s' doesn't define _cmp_key()." % cls.__name__)
+        raise TypeError(f"'{cls.__name__}' doesn't define _cmp_key().")
 
     setter("__eq__", lambda s, o: (s is o) or (o is not None and s._cmp_key() == o._cmp_key()))
     setter("__lt__", lambda s, o: o is not None and s._cmp_key() < o._cmp_key())
@@ -337,11 +336,7 @@ def lazy_lt(lseq, rseq):
             return lazy_lt(left, right)
         if left is None:
             return True
-        if right is None:
-            return False
-
-        return left < right
-
+        return False if right is None else left < right
     return False  # if equal, return False
 
 
@@ -420,7 +415,7 @@ def lazy_lexicographic_ordering(cls, set_hash=True):
 
     """
     if not has_method(cls, "_cmp_iter"):
-        raise TypeError("'%s' doesn't define _cmp_iter()." % cls.__name__)
+        raise TypeError(f"'{cls.__name__}' doesn't define _cmp_iter().")
 
     # comparison operators are implemented in terms of lazy_eq and lazy_lt
     def eq(self, other):
@@ -519,10 +514,7 @@ def in_function(function_name):
     the supplied Name, False otherwise."""
     stack = inspect.stack()
     try:
-        for elt in stack[2:]:
-            if elt[3] == function_name:
-                return True
-        return False
+        return any(elt[3] == function_name for elt in stack[2:])
     finally:
         del stack
 
@@ -545,8 +537,7 @@ def check_kwargs(kwargs, fun):
     """
     if kwargs:
         raise TypeError(
-            "'%s' is an invalid keyword argument for function %s()."
-            % (next(iter(kwargs)), fun.__name__)
+            f"'{next(iter(kwargs))}' is an invalid keyword argument for function {fun.__name__}()."
         )
 
 
@@ -569,7 +560,7 @@ def match_predicate(*args):
             if isinstance(arg, str):
                 if re.search(arg, string):
                     return True
-            elif isinstance(arg, list) or isinstance(arg, tuple):
+            elif isinstance(arg, (list, tuple)):
                 if any(re.search(i, string) for i in arg):
                     return True
             elif callable(arg):
@@ -636,48 +627,42 @@ def pretty_date(time, now=None):
     else:
         raise ValueError("pretty_date requires a timestamp or datetime")
 
-    second_diff = diff.seconds
     day_diff = diff.days
 
     if day_diff < 0:
         return ""
 
     if day_diff == 0:
+        second_diff = diff.seconds
         if second_diff < 10:
             return "just now"
         if second_diff < 60:
-            return str(second_diff) + " seconds ago"
+            return f"{str(second_diff)} seconds ago"
         if second_diff < 120:
             return "a minute ago"
         if second_diff < 3600:
-            return str(second_diff // 60) + " minutes ago"
+            return f"{str(second_diff // 60)} minutes ago"
         if second_diff < 7200:
             return "an hour ago"
         if second_diff < 86400:
-            return str(second_diff // 3600) + " hours ago"
+            return f"{str(second_diff // 3600)} hours ago"
     if day_diff == 1:
         return "yesterday"
     if day_diff < 7:
-        return str(day_diff) + " days ago"
+        return f"{str(day_diff)} days ago"
     if day_diff < 28:
         weeks = day_diff // 7
-        if weeks == 1:
-            return "a week ago"
-        else:
-            return str(day_diff // 7) + " weeks ago"
+        return "a week ago" if weeks == 1 else f"{str(day_diff // 7)} weeks ago"
     if day_diff < 365:
         months = day_diff // 30
         if months == 1:
             return "a month ago"
         elif months == 12:
             months -= 1
-        return str(months) + " months ago"
+        return f"{str(months)} months ago"
 
     diff = day_diff // 365
-    if diff == 1:
-        return "a year ago"
-    else:
-        return str(diff) + " years ago"
+    return "a year ago" if diff == 1 else f"{str(diff)} years ago"
 
 
 def pretty_string_to_date(date_str, now=None):
@@ -724,7 +709,7 @@ def pretty_string_to_date(date_str, now=None):
             how_many *= 365
             time_period = "day"
 
-        kwargs = {(time_period + "s"): how_many}
+        kwargs = {f"{time_period}s": how_many}
         return now - timedelta(**kwargs)
 
     pattern[pretty_regex] = _n_xxx_ago
@@ -900,10 +885,8 @@ def load_module_from_file(module_name, module_path):
     try:
         spec.loader.exec_module(module)
     except BaseException:
-        try:
+        with contextlib.suppress(KeyError):
             del sys.modules[spec.name]
-        except KeyError:
-            pass
         raise
     return module
 

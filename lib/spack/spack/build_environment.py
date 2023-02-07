@@ -129,9 +129,7 @@ def get_effective_jobs(jobs, parallel=True, supports_jobserver=False):
     """Return the number of jobs, or None if supports_jobserver and a jobserver is detected."""
     if not parallel or jobs <= 1 or env_flag(SPACK_NO_PARALLEL_MAKE):
         return 1
-    if supports_jobserver and jobserver_enabled():
-        return None
-    return jobs
+    return None if supports_jobserver and jobserver_enabled() else jobs
 
 
 class MakeExecutable(Executable):
@@ -265,8 +263,7 @@ def clean_environment():
     for v in mpi_vars:
         env.unset(v)
 
-    build_lang = spack.config.get("config:build_language")
-    if build_lang:
+    if build_lang := spack.config.get("config:build_language"):
         # Override language-related variables. This can be used to force
         # English compiler messages etc., which allows parse_log_events to
         # show useful matches.
@@ -294,9 +291,7 @@ def _add_werror_handling(keep_werror, env):
         if keep_werror == "specific":
             keep_flags.add("-Werror-*")
             keep_flags.add("-Werror=*")
-        # This extra case is to handle -Werror-implicit-function-declaration
-        replace_flags.append(("-Werror-", "-Wno-error="))
-        replace_flags.append(("-Werror", "-Wno-error"))
+        replace_flags.extend((("-Werror-", "-Wno-error="), ("-Werror", "-Wno-error")))
     env.set("SPACK_COMPILER_FLAGS_KEEP", "|".join(keep_flags))
     env.set("SPACK_COMPILER_FLAGS_REPLACE", " ".join(["|".join(item) for item in replace_flags]))
 
@@ -389,10 +384,10 @@ def set_compiler_environment_variables(pkg, env):
         if inject_flags[flag]:
             # variables SPACK_<FLAG> inject flags through wrapper
             var_name = "SPACK_{0}".format(flag.upper())
-            env.set(var_name, " ".join(f for f in inject_flags[flag]))
+            env.set(var_name, " ".join(inject_flags[flag]))
         if env_flags[flag]:
             # implicit variables
-            env.set(flag.upper(), " ".join(f for f in env_flags[flag]))
+            env.set(flag.upper(), " ".join(env_flags[flag]))
     pkg.flags_to_build_system_args(build_system_flags)
 
     env.set("SPACK_COMPILER_SPEC", str(spec.compiler))
@@ -481,27 +476,28 @@ def set_wrapper_variables(pkg, env):
             list_to_modify.insert(0, item)
 
     def update_compiler_args_for_dep(dep):
-        if dep in link_deps and (not is_system_path(dep.prefix)):
-            query = pkg.spec[dep.name]
-            dep_link_dirs = list()
-            try:
-                dep_link_dirs.extend(query.libs.directories)
-            except NoLibrariesError:
-                tty.debug("No libraries found for {0}".format(dep.name))
+        if dep not in link_deps or is_system_path(dep.prefix):
+            return
+        query = pkg.spec[dep.name]
+        dep_link_dirs = []
+        try:
+            dep_link_dirs.extend(query.libs.directories)
+        except NoLibrariesError:
+            tty.debug("No libraries found for {0}".format(dep.name))
 
-            for default_lib_dir in ["lib", "lib64"]:
-                default_lib_prefix = os.path.join(dep.prefix, default_lib_dir)
-                if os.path.isdir(default_lib_prefix):
-                    dep_link_dirs.append(default_lib_prefix)
+        for default_lib_dir in ["lib", "lib64"]:
+            default_lib_prefix = os.path.join(dep.prefix, default_lib_dir)
+            if os.path.isdir(default_lib_prefix):
+                dep_link_dirs.append(default_lib_prefix)
 
-            _prepend_all(link_dirs, dep_link_dirs)
-            if dep in rpath_deps:
-                _prepend_all(rpath_dirs, dep_link_dirs)
+        _prepend_all(link_dirs, dep_link_dirs)
+        if dep in rpath_deps:
+            _prepend_all(rpath_dirs, dep_link_dirs)
 
-            try:
-                _prepend_all(include_dirs, query.headers.directories)
-            except NoHeadersError:
-                tty.debug("No headers found for {0}".format(dep.name))
+        try:
+            _prepend_all(include_dirs, query.headers.directories)
+        except NoHeadersError:
+            tty.debug("No headers found for {0}".format(dep.name))
 
     for dspec in pkg.spec.traverse(root=False, order="post"):
         if dspec.external:
@@ -650,9 +646,9 @@ def _static_to_shared_library(arch, compiler, static_lib, shared_lib=None, **kwa
         compat_version (str): Library compatibility version. Default is
                               version.
     """
-    compiler_output = kwargs.get("compiler_output", None)
+    compiler_output = kwargs.get("compiler_output")
     arguments = kwargs.get("arguments", [])
-    version = kwargs.get("version", None)
+    version = kwargs.get("version")
     compat_version = kwargs.get("compat_version", version)
 
     if not shared_lib:
@@ -721,7 +717,7 @@ def _static_to_shared_library(arch, compiler, static_lib, shared_lib=None, **kwa
 def get_rpath_deps(pkg):
     """Return immediate or transitive RPATHs depending on the package."""
     if pkg.transitive_rpaths:
-        return [d for d in pkg.spec.traverse(root=False, deptype=("link"))]
+        return list(pkg.spec.traverse(root=False, deptype=("link")))
     else:
         return pkg.spec.dependencies(deptype="link")
 
@@ -822,8 +818,7 @@ def setup_package(pkg, dirty, context="build"):
 
     load_external_modules(pkg)
 
-    implicit_rpaths = pkg.compiler.implicit_rpaths()
-    if implicit_rpaths:
+    if implicit_rpaths := pkg.compiler.implicit_rpaths():
         env_mods.set("SPACK_COMPILER_IMPLICIT_RPATHS", ":".join(implicit_rpaths))
 
     # Make sure nothing's strange about the Spack environment.
@@ -1069,18 +1064,12 @@ def _setup_pkg_and_run(
 
         error_msg = str(exc)
         if isinstance(exc, (spack.multimethod.NoSuchMethodError, AttributeError)):
-            error_msg = (
-                "The '{}' package cannot find an attribute while trying to build "
-                "from sources. This might be due to a change in Spack's package format "
-                "to support multiple build-systems for a single package. You can fix this "
-                "by updating the build recipe, and you can also report the issue as a bug. "
-                "More information at https://spack.readthedocs.io/en/latest/packaging_guide.html#installation-procedure"
-            ).format(pkg.name)
+            error_msg = f"The '{pkg.name}' package cannot find an attribute while trying to build from sources. This might be due to a change in Spack's package format to support multiple build-systems for a single package. You can fix this by updating the build recipe, and you can also report the issue as a bug. More information at https://spack.readthedocs.io/en/latest/packaging_guide.html#installation-procedure"
             error_msg = colorize("@*R{{{}}}".format(error_msg))
-            error_msg = "{}\n\n{}".format(str(exc), error_msg)
+            error_msg = f"{str(exc)}\n\n{error_msg}"
 
         # make a pickleable exception to send to parent.
-        msg = "%s: %s" % (exc_type.__name__, error_msg)
+        msg = f"{exc_type.__name__}: {error_msg}"
 
         ce = ChildError(
             msg,
@@ -1150,12 +1139,10 @@ def start_build_process(pkg, function, kwargs):
         if sys.platform != "win32" and sys.stdin.isatty() and hasattr(sys.stdin, "fileno"):
             input_fd = os.dup(sys.stdin.fileno())
             input_multiprocess_fd = MultiProcessFd(input_fd)
-        mflags = os.environ.get("MAKEFLAGS", False)
-        if mflags:
-            m = re.search(r"--jobserver-[^=]*=(\d),(\d)", mflags)
-            if m:
-                jobserver_fd1 = MultiProcessFd(int(m.group(1)))
-                jobserver_fd2 = MultiProcessFd(int(m.group(2)))
+        if mflags := os.environ.get("MAKEFLAGS", False):
+            if m := re.search(r"--jobserver-[^=]*=(\d),(\d)", mflags):
+                jobserver_fd1 = MultiProcessFd(int(m[1]))
+                jobserver_fd2 = MultiProcessFd(int(m[2]))
 
         p = multiprocessing.Process(
             target=_setup_pkg_and_run,
@@ -1323,7 +1310,7 @@ class ChildError(InstallError):
     @property
     def long_message(self):
         out = io.StringIO()
-        out.write(self._long_message if self._long_message else "")
+        out.write(self._long_message or "")
 
         have_log = self.log_name and os.path.exists(self.log_name)
 
@@ -1333,13 +1320,10 @@ class ChildError(InstallError):
             if have_log:
                 write_log_summary(out, self.log_type, self.log_name)
 
-        else:
-            # The error happened in the Python code, so try to show
-            # some context from the Package itself.
-            if self.context:
-                out.write("\n")
-                out.write("\n".join(self.context))
-                out.write("\n")
+        elif self.context:
+            out.write("\n")
+            out.write("\n".join(self.context))
+            out.write("\n")
 
         if out.getvalue():
             out.write("\n")

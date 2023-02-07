@@ -101,25 +101,22 @@ def _walk_section(s, level=0):
             yield indent + c.strip()
         x = s[name]
         if u'\n' in x:
-            i = indent + u'  '
+            i = f'{indent}  '
             x = u'|\n' + i + x.strip().replace(u'\n', u'\n' + i)
         elif ':' in x:
             x = u"'" + x.replace(u"'", u"''") + u"'"
         line = u'{0}{1}: {2}'.format(indent, name, x)
-        c = s.inline_comments[name]
-        if c:
-            line += u' ' + c
+        if c := s.inline_comments[name]:
+            line += f' {c}'
         yield line
     for name in s.sections:
         for c in s.comments[name]:
             yield indent + c.strip()
         line = u'{0}{1}:'.format(indent, name)
-        c = s.inline_comments[name]
-        if c:
-            line += u' ' + c
+        if c := s.inline_comments[name]:
+            line += f' {c}'
         yield line
-        for val in _walk_section(s[name], level=level+1):
-            yield val
+        yield from _walk_section(s[name], level=level+1)
 
 # def config_obj_2_rt_yaml(cfg):
 #     from .comments import CommentedMap, CommentedSeq

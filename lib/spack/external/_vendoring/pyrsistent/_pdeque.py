@@ -158,10 +158,11 @@ class PDeque(object):
         return not self._left_list and not self._right_list
 
     def __lt__(self, other):
-        if not isinstance(other, PDeque):
-            return NotImplemented
-
-        return tuple(self) < tuple(other)
+        return (
+            tuple(self) < tuple(other)
+            if isinstance(other, PDeque)
+            else NotImplemented
+        )
 
     def __eq__(self, other):
         if not isinstance(other, PDeque):
@@ -329,7 +330,9 @@ class PDeque(object):
             return result
 
         if not isinstance(index, Integral):
-            raise TypeError("'%s' object cannot be interpreted as an index" % type(index).__name__)
+            raise TypeError(
+                f"'{type(index).__name__}' object cannot be interpreted as an index"
+            )
 
         if index >= 0:
             return self.popleft(index).left
@@ -361,7 +364,7 @@ def pdeque(iterable=(), maxlen=None):
     if maxlen is not None:
         t = t[-maxlen:]
     length = len(t)
-    pivot = int(length / 2)
+    pivot = length // 2
     left = plist(t[:pivot])
     right = plist(t[pivot:], reverse=True)
     return PDeque(left, right, length, maxlen)

@@ -67,7 +67,7 @@ class TemporaryDirectory(object):
 
 
 def _is_main_phase(phase_name):
-    return True if phase_name == "specs" else False
+    return phase_name == "specs"
 
 
 def get_job_name(phase, strip_compiler, spec, osarch, build_group):
@@ -155,11 +155,11 @@ def _add_dependency(spec_label, dep_label, deps):
 def _get_spec_dependencies(
     specs, deps, spec_labels, check_index_only=False, mirrors_to_check=None
 ):
-    spec_deps_obj = _compute_spec_deps(
-        specs, check_index_only=check_index_only, mirrors_to_check=mirrors_to_check
-    )
-
-    if spec_deps_obj:
+    if spec_deps_obj := _compute_spec_deps(
+        specs,
+        check_index_only=check_index_only,
+        mirrors_to_check=mirrors_to_check,
+    ):
         dependencies = spec_deps_obj["dependencies"]
         specs = spec_deps_obj["specs"]
 
@@ -214,7 +214,7 @@ def stage_spec_jobs(specs, check_index_only=False, mirrors_to_check=None):
         new_deps = {}
 
         for key, value in deps.items():
-            new_value = set([v for v in value if v not in satisfied_list])
+            new_value = {v for v in value if v not in satisfied_list}
             if new_value:
                 new_deps[key] = new_value
 
@@ -485,8 +485,7 @@ def get_stack_changed(env_path, rev1="HEAD^", rev2="HEAD"):
     whether or not the stack was changed.  Returns True if the environment
     manifest changed between the provided revisions (or additionally if the
     `.gitlab-ci.yml` file itself changed).  Returns False otherwise."""
-    git = spack.util.git.git()
-    if git:
+    if git := spack.util.git.git():
         with fs.working_dir(spack.paths.prefix):
             git_log = git(
                 "diff",
@@ -497,7 +496,7 @@ def get_stack_changed(env_path, rev1="HEAD^", rev2="HEAD"):
                 error=os.devnull,
                 fail_on_error=False,
             ).strip()
-            lines = [] if not git_log else re.split(r"\s+", git_log)
+            lines = re.split(r"\s+", git_log) if git_log else []
 
             for path in lines:
                 if ".gitlab-ci.yml" in path or path in env_path:

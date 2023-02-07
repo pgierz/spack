@@ -60,24 +60,15 @@ class BaseRepresenter(object):
             return bases
 
     def represent_data(self, data):
-        if self.ignore_aliases(data):
-            self.alias_key = None
-        else:
-            self.alias_key = id(data)
+        self.alias_key = None if self.ignore_aliases(data) else id(data)
         if self.alias_key is not None:
             if self.alias_key in self.represented_objects:
-                node = self.represented_objects[self.alias_key]
-                # if node is None:
-                #     raise RepresenterError(
-                #          "recursive objects are not allowed: %r" % data)
-                return node
+                return self.represented_objects[self.alias_key]
             # self.represented_objects[alias_key] = None
             self.object_keeper.append(data)
         data_types = type(data).__mro__
-        if PY2:
-            # if type(data) is types.InstanceType:
-            if isinstance(data, types.InstanceType):
-                data_types = self.get_classobj_bases(data.__class__) + \
+        if PY2 and isinstance(data, types.InstanceType):
+            data_types = self.get_classobj_bases(data.__class__) + \
                     list(data_types)
         if data_types[0] in self.yaml_representers:
             node = self.yaml_representers[data_types[0]](self, data)
@@ -134,7 +125,7 @@ class BaseRepresenter(object):
         best_style = True
         for item in sequence:
             node_item = self.represent_data(item)
-            if not (isinstance(node_item, ScalarNode) and not node_item.style):
+            if not isinstance(node_item, ScalarNode) or node_item.style:
                 best_style = False
             value.append(node_item)
         if flow_style is None:
@@ -149,7 +140,6 @@ class BaseRepresenter(object):
         node = SequenceNode(tag, value, flow_style=flow_style)
         if self.alias_key is not None:
             self.represented_objects[self.alias_key] = node
-        best_style = True
         for item_key in omap:
             item_val = omap[item_key]
             node_item = self.represent_data({item_key: item_val})
@@ -161,6 +151,7 @@ class BaseRepresenter(object):
             if self.default_flow_style is not None:
                 node.flow_style = self.default_flow_style
             else:
+                best_style = True
                 node.flow_style = best_style
         return node
 
@@ -179,10 +170,9 @@ class BaseRepresenter(object):
         for item_key, item_value in mapping:
             node_key = self.represent_key(item_key)
             node_value = self.represent_data(item_value)
-            if not (isinstance(node_key, ScalarNode) and not node_key.style):
+            if not isinstance(node_key, ScalarNode) or node_key.style:
                 best_style = False
-            if not (isinstance(node_value, ScalarNode) and not
-                    node_value.style):
+            if not isinstance(node_value, ScalarNode) or node_value.style:
                 best_style = False
             value.append((node_key, node_value))
         if flow_style is None:
@@ -243,10 +233,7 @@ class SafeRepresenter(BaseRepresenter):
             return self.represent_scalar(u'tag:yaml.org,2002:str', data)
 
     def represent_bool(self, data):
-        if data:
-            value = u'true'
-        else:
-            value = u'false'
+        value = u'true' if data else u'false'
         return self.represent_scalar(u'tag:yaml.org,2002:bool', value)
 
     def represent_int(self, data):
@@ -262,7 +249,7 @@ class SafeRepresenter(BaseRepresenter):
         inf_value *= inf_value
 
     def represent_float(self, data):
-        if data != data or (data == 0.0 and data == 1.0):
+        if data != data:
             value = u'.nan'
         elif data == self.inf_value:
             value = u'.inf'
@@ -303,9 +290,7 @@ class SafeRepresenter(BaseRepresenter):
         return self.represent_omap(u'tag:yaml.org,2002:omap', data)
 
     def represent_set(self, data):
-        value = {}
-        for key in data:
-            value[key] = None
+        value = {key: None for key in data}
         return self.represent_mapping(u'tag:yaml.org,2002:set', value)
 
     def represent_date(self, data):
@@ -324,7 +309,7 @@ class SafeRepresenter(BaseRepresenter):
         return self.represent_mapping(tag, state, flow_style=flow_style)
 
     def represent_undefined(self, data):
-        raise RepresenterError("cannot represent an object: %s" % data)
+        raise RepresenterError(f"cannot represent an object: {data}")
 
 SafeRepresenter.add_representer(type(None),
                                 SafeRepresenter.represent_none)
@@ -425,13 +410,14 @@ class Representer(SafeRepresenter):
         return self.represent_sequence(u'tag:yaml.org,2002:python/tuple', data)
 
     def represent_name(self, data):
-        name = u'%s.%s' % (data.__module__, data.__name__)
+        name = f'{data.__module__}.{data.__name__}'
         return self.represent_scalar(u'tag:yaml.org,2002:python/name:' +
                                      name, u'')
 
     def represent_module(self, data):
         return self.represent_scalar(
-            u'tag:yaml.org,2002:python/module:'+data.__name__, u'')
+            f'tag:yaml.org,2002:python/module:{data.__name__}', u''
+        )
 
     if PY2:
         def represent_instance(self, data):
@@ -453,28 +439,27 @@ class Representer(SafeRepresenter):
             # !!python/object/new node.
 
             cls = data.__class__
-            class_name = u'%s.%s' % (cls.__module__, cls.__name__)
-            args = None
+            class_name = f'{cls.__module__}.{cls.__name__}'
             state = None
+            args = None
             if hasattr(data, '__getinitargs__'):
                 args = list(data.__getinitargs__())
-            if hasattr(data, '__getstate__'):
-                state = data.__getstate__()
-            else:
-                state = data.__dict__
+            state = data.__getstate__() if hasattr(data, '__getstate__') else data.__dict__
             if args is None and isinstance(state, dict):
                 return self.represent_mapping(
-                    u'tag:yaml.org,2002:python/object:'+class_name, state)
+                    f'tag:yaml.org,2002:python/object:{class_name}', state
+                )
             if isinstance(state, dict) and not state:
                 return self.represent_sequence(
-                    u'tag:yaml.org,2002:python/object/new:' +
-                    class_name, args)
+                    f'tag:yaml.org,2002:python/object/new:{class_name}', args
+                )
             value = {}
             if args:
                 value['args'] = args
             value['state'] = state
             return self.represent_mapping(
-                u'tag:yaml.org,2002:python/object/new:'+class_name, value)
+                f'tag:yaml.org,2002:python/object/new:{class_name}', value
+            )
 
     def represent_object(self, data):
         # We use __reduce__ API to save the data. data.__reduce__ returns
@@ -519,13 +504,14 @@ class Representer(SafeRepresenter):
         else:
             tag = u'tag:yaml.org,2002:python/object/apply:'
             newobj = False
-        function_name = u'%s.%s' % (function.__module__, function.__name__)
+        function_name = f'{function.__module__}.{function.__name__}'
         if not args and not listitems and not dictitems \
-                and isinstance(state, dict) and newobj:
+                    and isinstance(state, dict) and newobj:
             return self.represent_mapping(
-                u'tag:yaml.org,2002:python/object:'+function_name, state)
+                f'tag:yaml.org,2002:python/object:{function_name}', state
+            )
         if not listitems and not dictitems  \
-                and isinstance(state, dict) and not state:
+                    and isinstance(state, dict) and not state:
             return self.represent_sequence(tag+function_name, args)
         value = {}
         if args:
@@ -654,7 +640,7 @@ class RoundTripRepresenter(SafeRepresenter):
         for idx, item in enumerate(sequence):
             node_item = self.represent_data(item)
             node_item.comment = item_comments.get(idx)
-            if not (isinstance(node_item, ScalarNode) and not node_item.style):
+            if not isinstance(node_item, ScalarNode) or node_item.style:
                 best_style = False
             value.append(node_item)
         if flow_style is None:
@@ -699,8 +685,7 @@ class RoundTripRepresenter(SafeRepresenter):
         for item_key, item_value in mapping.items():
             node_key = self.represent_key(item_key)
             node_value = self.represent_data(item_value)
-            item_comment = item_comments.get(item_key)
-            if item_comment:
+            if item_comment := item_comments.get(item_key):
                 assert getattr(node_key, 'comment', None) is None
                 node_key.comment = item_comment[:2]
                 nvc = getattr(node_value, 'comment', None)
@@ -709,10 +694,9 @@ class RoundTripRepresenter(SafeRepresenter):
                     nvc[1] = item_comment[3]
                 else:
                     node_value.comment = item_comment[2:]
-            if not (isinstance(node_key, ScalarNode) and not node_key.style):
+            if not isinstance(node_key, ScalarNode) or node_key.style:
                 best_style = False
-            if not (isinstance(node_value, ScalarNode) and not
-                    node_value.style):
+            if not isinstance(node_value, ScalarNode) or node_value.style:
                 best_style = False
             value.append((node_key, node_value))
         if flow_style is None:
@@ -720,8 +704,7 @@ class RoundTripRepresenter(SafeRepresenter):
                 node.flow_style = self.default_flow_style
             else:
                 node.flow_style = best_style
-        merge_list = [m[1] for m in getattr(mapping, merge_attrib, [])]
-        if merge_list:
+        if merge_list := [m[1] for m in getattr(mapping, merge_attrib, [])]:
             # because of the call to represent_data here, the anchors
             # are marked as being used and thereby created
             if len(merge_list) == 1:
@@ -746,7 +729,6 @@ class RoundTripRepresenter(SafeRepresenter):
         node = SequenceNode(tag, value, flow_style=flow_style, anchor=anchor)
         if self.alias_key is not None:
             self.represented_objects[self.alias_key] = node
-        best_style = True
         try:
             comment = getattr(omap, comment_attrib)
             node.comment = comment.comment
@@ -767,9 +749,7 @@ class RoundTripRepresenter(SafeRepresenter):
         for item_key in omap:
             item_val = omap[item_key]
             node_item = self.represent_data({item_key: item_val})
-            # node item has two scalars in value: node_key and node_value
-            item_comment = item_comments.get(item_key)
-            if item_comment:
+            if item_comment := item_comments.get(item_key):
                 if item_comment[1]:
                     node_item.comment = [None, item_comment[1]]
                 assert getattr(node_item.value[0][0], 'comment', None) is None
@@ -788,6 +768,7 @@ class RoundTripRepresenter(SafeRepresenter):
             if self.default_flow_style is not None:
                 node.flow_style = self.default_flow_style
             else:
+                best_style = True
                 node.flow_style = best_style
         return node
 
@@ -826,15 +807,13 @@ class RoundTripRepresenter(SafeRepresenter):
         for item_key in setting.odict:
             node_key = self.represent_key(item_key)
             node_value = self.represent_data(None)
-            item_comment = item_comments.get(item_key)
-            if item_comment:
+            if item_comment := item_comments.get(item_key):
                 assert getattr(node_key, 'comment', None) is None
                 node_key.comment = item_comment[:2]
             node_key.style = node_value.style = "?"
-            if not (isinstance(node_key, ScalarNode) and not node_key.style):
+            if not isinstance(node_key, ScalarNode) or node_key.style:
                 best_style = False
-            if not (isinstance(node_value, ScalarNode) and not
-                    node_value.style):
+            if not isinstance(node_value, ScalarNode) or node_value.style:
                 best_style = False
             value.append((node_key, node_value))
         best_style = best_style
@@ -849,7 +828,7 @@ class RoundTripRepresenter(SafeRepresenter):
         if t:
             while t and t[0] == '!':
                 t = t[1:]
-            tag = 'tag:yaml.org,2002:' + t
+            tag = f'tag:yaml.org,2002:{t}'
         else:
             tag = u'tag:yaml.org,2002:map'
         return self.represent_mapping(tag, data)

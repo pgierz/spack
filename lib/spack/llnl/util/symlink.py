@@ -50,7 +50,7 @@ def _win32_junction(path, link):
 
     # os.symlink will fail if link exists, emulate the behavior here
     if exists(link):
-        raise OSError(errno.EEXIST, "File  exists: %s -> %s" % (link, path))
+        raise OSError(errno.EEXIST, f"File  exists: {link} -> {path}")
 
     if not os.path.isabs(path):
         parent = os.path.join(link, os.pardir)

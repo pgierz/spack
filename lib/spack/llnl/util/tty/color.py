@@ -114,55 +114,56 @@ def try_enable_terminal_color_on_windows():
 
     Note: No-op on non windows platforms
     """
-    if sys.platform == "win32":
-        import ctypes
-        import msvcrt
-        from ctypes import wintypes
+    if sys.platform != "win32":
+        return
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
 
-        try:
-            ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
-            DISABLE_NEWLINE_AUTO_RETURN = 0x0008
-            kernel32 = ctypes.WinDLL("kernel32")
+    try:
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        DISABLE_NEWLINE_AUTO_RETURN = 0x0008
+        kernel32 = ctypes.WinDLL("kernel32")
 
-            def _err_check(result, func, args):
-                if not result:
-                    raise ctypes.WinError(ctypes.get_last_error())
-                return args
+        def _err_check(result, func, args):
+            if not result:
+                raise ctypes.WinError(ctypes.get_last_error())
+            return args
 
-            kernel32.GetConsoleMode.errcheck = _err_check
-            kernel32.GetConsoleMode.argtypes = (
-                wintypes.HANDLE,  # hConsoleHandle, i.e. GetStdHandle output type
-                ctypes.POINTER(wintypes.DWORD),  # result of GetConsoleHandle
+        kernel32.GetConsoleMode.errcheck = _err_check
+        kernel32.GetConsoleMode.argtypes = (
+            wintypes.HANDLE,  # hConsoleHandle, i.e. GetStdHandle output type
+            ctypes.POINTER(wintypes.DWORD),  # result of GetConsoleHandle
+        )
+        kernel32.SetConsoleMode.errcheck = _err_check
+        kernel32.SetConsoleMode.argtypes = (
+            wintypes.HANDLE,  # hConsoleHandle, i.e. GetStdHandle output type
+            wintypes.DWORD,  # result of GetConsoleHandle
+        )
+        # Use conout$ here to handle a redirectired stdout/get active console associated
+        # with spack
+        with open(r"\\.\CONOUT$", "w") as conout:
+            # Link above would use kernel32.GetStdHandle(-11) however this would not handle
+            # a redirected stdout appropriately, so we always refer to the current CONSOLE out
+            # which is defined as conout$ on Windows.
+            # linked example is follow more or less to the letter beyond this point
+            con_handle = msvcrt.get_osfhandle(conout.fileno())
+            dw_orig_mode = wintypes.DWORD()
+            kernel32.GetConsoleMode(con_handle, ctypes.byref(dw_orig_mode))
+            dw_new_mode_request = (
+                ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN
             )
-            kernel32.SetConsoleMode.errcheck = _err_check
-            kernel32.SetConsoleMode.argtypes = (
-                wintypes.HANDLE,  # hConsoleHandle, i.e. GetStdHandle output type
-                wintypes.DWORD,  # result of GetConsoleHandle
-            )
-            # Use conout$ here to handle a redirectired stdout/get active console associated
-            # with spack
-            with open(r"\\.\CONOUT$", "w") as conout:
-                # Link above would use kernel32.GetStdHandle(-11) however this would not handle
-                # a redirected stdout appropriately, so we always refer to the current CONSOLE out
-                # which is defined as conout$ on Windows.
-                # linked example is follow more or less to the letter beyond this point
-                con_handle = msvcrt.get_osfhandle(conout.fileno())
-                dw_orig_mode = wintypes.DWORD()
-                kernel32.GetConsoleMode(con_handle, ctypes.byref(dw_orig_mode))
-                dw_new_mode_request = (
-                    ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN
-                )
-                dw_new_mode = dw_new_mode_request | dw_orig_mode.value
-                kernel32.SetConsoleMode(con_handle, wintypes.DWORD(dw_new_mode))
-        except OSError:
-            # We failed to enable color support for associated console
-            # report and move on but spack will no longer attempt to
-            # color
-            global _force_color
-            _force_color = False
-            from . import debug
+            dw_new_mode = dw_new_mode_request | dw_orig_mode.value
+            kernel32.SetConsoleMode(con_handle, wintypes.DWORD(dw_new_mode))
+    except OSError:
+        # We failed to enable color support for associated console
+        # report and move on but spack will no longer attempt to
+        # color
+        global _force_color
+        _force_color = False
+        from . import debug
 
-            debug("Unable to support color on Windows terminal")
+        debug("Unable to support color on Windows terminal")
 
 
 def _color_when_value(when):
@@ -174,15 +175,13 @@ def _color_when_value(when):
     if when in color_when_values:
         return color_when_values[when]
     elif when not in color_when_values.values():
-        raise ValueError("Invalid color setting: %s" % when)
+        raise ValueError(f"Invalid color setting: {when}")
     return when
 
 
 def get_color_when():
     """Return whether commands should print color or not."""
-    if _force_color is not None:
-        return _force_color
-    return sys.stdout.isatty()
+    return _force_color if _force_color is not None else sys.stdout.isatty()
 
 
 def set_color_when(when):
@@ -200,7 +199,7 @@ def set_color_when(when):
 def color_when(value):
     """Context manager to temporarily use a particular color setting."""
     old_value = value
-    set_color_when(value)
+    set_color_when(old_value)
     yield
     set_color_when(old_value)
 
@@ -213,10 +212,7 @@ class match_to_ansi(object):
     def escape(self, s):
         """Returns a TTY escape sequence for a color"""
         if self.color:
-            if self.enclose:
-                return r"\[\033[%sm\]" % s
-            else:
-                return "\033[%sm" % s
+            return r"\[\033[%sm\]" % s if self.enclose else "\033[%sm" % s
         else:
             return ""
 
@@ -232,20 +228,17 @@ class match_to_ansi(object):
         elif m == "@.":
             return self.escape(0)
         elif m == "@":
-            raise ColorParseError("Incomplete color format: '%s' in %s" % (m, match.string))
+            raise ColorParseError(f"Incomplete color format: '{m}' in {match.string}")
 
         string = styles[style]
         if color:
             if color not in colors:
                 raise ColorParseError(
-                    "Invalid color specifier: '%s' in '%s'" % (color, match.string)
+                    f"Invalid color specifier: '{color}' in '{match.string}'"
                 )
-            string += ";" + str(colors[color])
+            string += f";{str(colors[color])}"
 
-        colored_text = ""
-        if text:
-            colored_text = text + self.escape(0)
-
+        colored_text = text + self.escape(0) if text else ""
         return self.escape(string) + colored_text
 
 
@@ -317,8 +310,7 @@ def cescape(string):
     """
     string = str(string)
     string = string.replace("@", "@@")
-    string = string.replace("}", "}}")
-    return string
+    return string.replace("}", "}}")
 
 
 class ColorStream(object):
@@ -332,10 +324,7 @@ class ColorStream(object):
 
         color = self._color
         if self._color is None:
-            if raw:
-                color = True
-            else:
-                color = get_color_when()
+            color = True if raw else get_color_when()
         raw_write(colorize(string, color=color))
 
     def writelines(self, sequence, **kwargs):

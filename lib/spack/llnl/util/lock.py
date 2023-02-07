@@ -139,7 +139,7 @@ class OpenFileTracker(object):
     def release_by_stat(self, stat):
         key = (stat.st_dev, stat.st_ino, os.getpid())
         open_file = self._descriptors.get(key)
-        assert open_file, "Attempted to close non-existing inode: %s" % stat.st_inode
+        assert open_file, f"Attempted to close non-existing inode: {stat.st_inode}"
 
         open_file.refs -= 1
         if not open_file.refs:
@@ -166,7 +166,7 @@ def _attempts_str(wait_time, nattempts):
         return ""
 
     attempts = spack.util.string.plural(nattempts, "attempt")
-    return " after {} and {}".format(pretty_seconds(wait_time), attempts)
+    return f" after {pretty_seconds(wait_time)} and {attempts}"
 
 
 class LockType(object):
@@ -175,21 +175,15 @@ class LockType(object):
 
     @staticmethod
     def to_str(tid):
-        ret = "READ"
-        if tid == LockType.WRITE:
-            ret = "WRITE"
-        return ret
+        return "WRITE" if tid == LockType.WRITE else "READ"
 
     @staticmethod
     def to_module(tid):
-        lock = fcntl.LOCK_SH
-        if tid == LockType.WRITE:
-            lock = fcntl.LOCK_EX
-        return lock
+        return fcntl.LOCK_EX if tid == LockType.WRITE else fcntl.LOCK_SH
 
     @staticmethod
     def is_valid(op):
-        return op == LockType.READ or op == LockType.WRITE
+        return op in [LockType.READ, LockType.WRITE]
 
 
 class Lock(object):
@@ -318,9 +312,7 @@ class Lock(object):
             raise LockROFileError(self.path)
 
         self._log_debug(
-            "{} locking [{}:{}]: timeout {}".format(
-                op_str.lower(), self._start, self._length, pretty_seconds(timeout or 0)
-            )
+            f"{op_str.lower()} locking [{self._start}:{self._length}]: timeout {pretty_seconds(timeout or 0)}"
         )
 
         poll_intervals = iter(Lock._poll_interval_generator())
@@ -401,8 +393,7 @@ class Lock(object):
         self.old_pid = self.pid
         self.old_host = self.host
 
-        line = self._file.read()
-        if line:
+        if line := self._file.read():
             pid, host = line.strip().split(",")
             _, _, self.pid = pid.rpartition("=")
             _, _, self.host = host.rpartition("=")
@@ -418,7 +409,7 @@ class Lock(object):
 
         # write pid, host to disk to sync over FS
         self._file.seek(0)
-        self._file.write("pid=%s,host=%s" % (self.pid, self.host))
+        self._file.write(f"pid={self.pid},host={self.host}")
         self._file.truncate()
         self._file.flush()
         os.fsync(self._file.fileno())
@@ -515,17 +506,16 @@ class Lock(object):
         Raises:
             LockDowngradeError: if this is an attempt at a nested transaction
         """
+        if self._writes != 1 or self._reads != 0:
+            raise LockDowngradeError(self.path)
+        self._log_downgrading()
         timeout = timeout or self.default_timeout
 
-        if self._writes == 1 and self._reads == 0:
-            self._log_downgrading()
-            # can raise LockError.
-            wait_time, nattempts = self._lock(LockType.READ, timeout=timeout)
-            self._reads = 1
-            self._writes = 0
-            self._log_downgraded(wait_time, nattempts)
-        else:
-            raise LockDowngradeError(self.path)
+        # can raise LockError.
+        wait_time, nattempts = self._lock(LockType.READ, timeout=timeout)
+        self._reads = 1
+        self._writes = 0
+        self._log_downgraded(wait_time, nattempts)
 
     def upgrade_read_to_write(self, timeout=None):
         """
@@ -534,17 +524,16 @@ class Lock(object):
         Raises:
             LockUpgradeError: if this is an attempt at a nested transaction
         """
+        if self._reads != 1 or self._writes != 0:
+            raise LockUpgradeError(self.path)
+        self._log_upgrading()
         timeout = timeout or self.default_timeout
 
-        if self._reads == 1 and self._writes == 0:
-            self._log_upgrading()
-            # can raise LockError.
-            wait_time, nattempts = self._lock(LockType.WRITE, timeout=timeout)
-            self._reads = 0
-            self._writes = 1
-            self._log_upgraded(wait_time, nattempts)
-        else:
-            raise LockUpgradeError(self.path)
+        # can raise LockError.
+        wait_time, nattempts = self._lock(LockType.WRITE, timeout=timeout)
+        self._reads = 0
+        self._writes = 1
+        self._log_upgraded(wait_time, nattempts)
 
     def release_read(self, release_fn=None):
         """Releases a read lock.
@@ -566,8 +555,8 @@ class Lock(object):
         """
         assert self._reads > 0
 
-        locktype = "READ LOCK"
         if self._reads == 1 and self._writes == 0:
+            locktype = "READ LOCK"
             self._log_releasing(locktype)
 
             # we need to call release_fn before releasing the lock
@@ -602,8 +591,8 @@ class Lock(object):
         assert self._writes > 0
         release_fn = release_fn or true_fn
 
-        locktype = "WRITE LOCK"
         if self._writes == 1 and self._reads == 0:
+            locktype = "WRITE LOCK"
             self._log_releasing(locktype)
 
             # we need to call release_fn before releasing the lock
@@ -618,10 +607,7 @@ class Lock(object):
 
             # when the last *write* is released, we call release_fn here
             # instead of immediately before releasing the lock.
-            if self._writes == 0:
-                return release_fn()
-            else:
-                return False
+            return release_fn() if self._writes == 0 else False
 
     def cleanup(self):
         if self._reads == 0 and self._writes == 0:
@@ -637,7 +623,7 @@ class Lock(object):
     def _log_acquired(self, locktype, wait_time, nattempts):
         attempts_part = _attempts_str(wait_time, nattempts)
         now = datetime.now()
-        desc = "Acquired at %s" % now.strftime("%H:%M:%S.%f")
+        desc = f'Acquired at {now.strftime("%H:%M:%S.%f")}'
         self._log_debug(self._status_msg(locktype, "{0}{1}".format(desc, attempts_part)))
 
     def _log_acquiring(self, locktype):
@@ -651,7 +637,7 @@ class Lock(object):
     def _log_downgraded(self, wait_time, nattempts):
         attempts_part = _attempts_str(wait_time, nattempts)
         now = datetime.now()
-        desc = "Downgraded at %s" % now.strftime("%H:%M:%S.%f")
+        desc = f'Downgraded at {now.strftime("%H:%M:%S.%f")}'
         self._log_debug(self._status_msg("READ LOCK", "{0}{1}".format(desc, attempts_part)))
 
     def _log_downgrading(self):
@@ -659,7 +645,7 @@ class Lock(object):
 
     def _log_released(self, locktype):
         now = datetime.now()
-        desc = "Released at %s" % now.strftime("%H:%M:%S.%f")
+        desc = f'Released at {now.strftime("%H:%M:%S.%f")}'
         self._log_debug(self._status_msg(locktype, desc))
 
     def _log_releasing(self, locktype):
@@ -668,7 +654,7 @@ class Lock(object):
     def _log_upgraded(self, wait_time, nattempts):
         attempts_part = _attempts_str(wait_time, nattempts)
         now = datetime.now()
-        desc = "Upgraded at %s" % now.strftime("%H:%M:%S.%f")
+        desc = f'Upgraded at {now.strftime("%H:%M:%S.%f")}'
         self._log_debug(self._status_msg("WRITE LOCK", "{0}{1}".format(desc, attempts_part)))
 
     def _log_upgrading(self):
@@ -719,10 +705,7 @@ class LockTransaction(object):
     def __enter__(self):
         if self._enter() and self._acquire_fn:
             self._as = self._acquire_fn()
-            if hasattr(self._as, "__enter__"):
-                return self._as.__enter__()
-            else:
-                return self._as
+            return self._as.__enter__() if hasattr(self._as, "__enter__") else self._as
 
     def __exit__(self, type, value, traceback):
         suppress = False
@@ -731,9 +714,12 @@ class LockTransaction(object):
             if self._release_fn is not None:
                 return self._release_fn(type, value, traceback)
 
-        if self._as and hasattr(self._as, "__exit__"):
-            if self._as.__exit__(type, value, traceback):
-                suppress = True
+        if (
+            self._as
+            and hasattr(self._as, "__exit__")
+            and self._as.__exit__(type, value, traceback)
+        ):
+            suppress = True
 
         if self._exit(release_fn):
             suppress = True
@@ -769,7 +755,7 @@ class LockDowngradeError(LockError):
     """Raised when unable to downgrade from a write to a read lock."""
 
     def __init__(self, path):
-        msg = "Cannot downgrade lock from write to read on file: %s" % path
+        msg = f"Cannot downgrade lock from write to read on file: {path}"
         super(LockDowngradeError, self).__init__(msg)
 
 
@@ -797,7 +783,7 @@ class LockUpgradeError(LockError):
     """Raised when unable to upgrade from a read to a write lock."""
 
     def __init__(self, path):
-        msg = "Cannot upgrade lock from read to write on file: %s" % path
+        msg = f"Cannot upgrade lock from read to write on file: {path}"
         super(LockUpgradeError, self).__init__(msg)
 
 
@@ -809,7 +795,7 @@ class LockROFileError(LockPermissionError):
     """Tried to take an exclusive lock on a read-only file."""
 
     def __init__(self, path):
-        msg = "Can't take write lock on read-only file: %s" % path
+        msg = f"Can't take write lock on read-only file: {path}"
         super(LockROFileError, self).__init__(msg)
 
 
@@ -817,6 +803,6 @@ class CantCreateLockError(LockPermissionError):
     """Attempt to create a lock in an unwritable location."""
 
     def __init__(self, path):
-        msg = "cannot create lock '%s': " % path
+        msg = f"cannot create lock '{path}': "
         msg += "file does not exist and location is not writable"
         super(LockError, self).__init__(msg)

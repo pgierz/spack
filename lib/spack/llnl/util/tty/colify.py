@@ -25,7 +25,7 @@ class ColumnConfig:
 
     def __repr__(self):
         attrs = [(a, getattr(self, a)) for a in dir(self) if not a.startswith("__")]
-        return "<Config: %s>" % ", ".join("%s: %r" % a for a in attrs)
+        return f'<Config: {", ".join("%s: %r" % a for a in attrs)}>'
 
 
 def config_variable_cols(elts, console_width, padding, cols=0):
@@ -129,7 +129,7 @@ def colify(elts, **options):
 
     if options:
         raise TypeError(
-            "'%s' is an invalid keyword argument for this function." % next(options.iterkeys())
+            f"'{next(options.iterkeys())}' is an invalid keyword argument for this function."
         )
 
     # elts needs to be an array of strings so we can count the elements
@@ -137,9 +137,7 @@ def colify(elts, **options):
     if not elts:
         return (0, ())
 
-    # environment size is of the form "<rows>x<cols>"
-    env_size = os.environ.get("COLIFY_SIZE")
-    if env_size:
+    if env_size := os.environ.get("COLIFY_SIZE"):
         try:
             r, c = env_size.split("x")
             console_rows, console_cols = int(r), int(c)
@@ -148,9 +146,8 @@ def colify(elts, **options):
             pass
 
     # Use only one column if not a tty.
-    if not tty:
-        if tty is False or not output.isatty():
-            cols = 1
+    if not tty and (tty is False or not output.isatty()):
+        cols = 1
 
     # Specify the number of character columns to use.
     if not console_cols:

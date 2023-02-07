@@ -97,14 +97,13 @@ class ArgparseWriter(argparse.HelpFormatter):
                     subparser = action._name_parser_map[subaction.dest]
                     subcommands.append((subparser, subaction.dest))
 
-                    # Look for aliases of the form 'name (alias, ...)'
-                    if self.aliases:
-                        match = re.match(r"(.*) \((.*)\)", subaction.metavar)
-                        if match:
-                            aliases = match.group(2).split(", ")
-                            for alias in aliases:
-                                subparser = action._name_parser_map[alias]
-                                subcommands.append((subparser, alias))
+                    if match := re.match(r"(.*) \((.*)\)", subaction.metavar):
+                        if self.aliases:
+                            aliases = match[2].split(", ")
+                            subcommands.extend(
+                                (action._name_parser_map[alias], alias)
+                                for alias in aliases
+                            )
             else:
                 args = fmt._format_action_invocation(action)
                 help = self._expand_help(action) if action.help else ""

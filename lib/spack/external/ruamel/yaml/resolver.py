@@ -72,7 +72,7 @@ class BaseResolver(object):
                     node_check = element[0]
                     index_check = True
                 else:
-                    raise ResolverError("Invalid path element: %s" % element)
+                    raise ResolverError(f"Invalid path element: {element}")
             else:
                 node_check = None
                 index_check = element
@@ -83,12 +83,12 @@ class BaseResolver(object):
             elif node_check is dict:
                 node_check = MappingNode
             elif node_check not in [ScalarNode, SequenceNode, MappingNode]  \
-                    and not isinstance(node_check, string_types)  \
-                    and node_check is not None:
-                raise ResolverError("Invalid node checker: %s" % node_check)
+                        and not isinstance(node_check, string_types)  \
+                        and node_check is not None:
+                raise ResolverError(f"Invalid node checker: {node_check}")
             if not isinstance(index_check, (string_types, int))   \
-                    and index_check is not None:
-                raise ResolverError("Invalid index checker: %s" % index_check)
+                        and index_check is not None:
+                raise ResolverError(f"Invalid index checker: {index_check}")
             new_path.append((node_check, index_check))
         if kind is str:
             kind = ScalarNode
@@ -97,8 +97,8 @@ class BaseResolver(object):
         elif kind is dict:
             kind = MappingNode
         elif kind not in [ScalarNode, SequenceNode, MappingNode]    \
-                and kind is not None:
-            raise ResolverError("Invalid node kind: %s" % kind)
+                    and kind is not None:
+            raise ResolverError(f"Invalid node kind: {kind}")
         cls.yaml_path_resolvers[tuple(new_path), kind] = tag
 
     def descend_resolver(self, current_node, current_index):
@@ -134,16 +134,18 @@ class BaseResolver(object):
     def check_resolver_prefix(self, depth, path, kind,
                               current_node, current_index):
         node_check, index_check = path[depth-1]
-        if isinstance(node_check, string_types):
-            if current_node.tag != node_check:
-                return
-        elif node_check is not None:
-            if not isinstance(current_node, node_check):
-                return
+        if (
+            isinstance(node_check, string_types)
+            and current_node.tag != node_check
+            or not isinstance(node_check, string_types)
+            and node_check is not None
+            and not isinstance(current_node, node_check)
+        ):
+            return
         if index_check is True and current_index is not None:
             return
         if (index_check is False or index_check is None)    \
-                and current_index is None:
+                    and current_index is None:
             return
         if isinstance(index_check, string_types):
             if not (isinstance(current_index, ScalarNode) and
@@ -392,6 +394,6 @@ class VersionedResolver(BaseResolver):
             version = self.use_version
         if version is None:
             version = self._loader_version
-            if version is None:
-                version = _DEFAULT_VERSION
+        if version is None:
+            version = _DEFAULT_VERSION
         return version

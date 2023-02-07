@@ -13,7 +13,7 @@ class Token(object):
         attributes.sort()
         arguments = ', '.join(['%s=%r' % (key, getattr(self, key))
                                for key in attributes])
-        return '%s(%s)' % (self.__class__.__name__, arguments)
+        return f'{self.__class__.__name__}({arguments})'
 
     def add_post_comment(self, comment):
         if not hasattr(self, '_comment'):
@@ -67,10 +67,9 @@ class Token(object):
         comment = self.comment
         if comment is None or comment[0] is None:
             return None  # nothing to do
-        ret_val = [comment[0], None]
         if comment[1] is None:
             delattr(self, '_comment')
-        return ret_val
+        return [comment[0], None]
 
 
 # class BOMToken(Token):

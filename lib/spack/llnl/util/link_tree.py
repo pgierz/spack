@@ -23,7 +23,7 @@ empty_file_name = ".spack-empty"
 
 def remove_link(src, dest):
     if not islink(dest):
-        raise ValueError("%s is not a link tree!" % dest)
+        raise ValueError(f"{dest} is not a link tree!")
     # remove if dest is a hardlink/symlink to src; this will only
     # be false if two packages are merged into a prefix and have a
     # conflicting file
@@ -325,18 +325,18 @@ class LinkTree(object):
         for src, dest in traverse_tree(self._root, dest_root, **kwargs):
             if os.path.isdir(src):
                 if os.path.exists(dest) and not os.path.isdir(dest):
-                    conflicts.append("File blocks directory: %s" % dest)
+                    conflicts.append(f"File blocks directory: {dest}")
             elif os.path.exists(dest) and os.path.isdir(dest):
-                conflicts.append("Directory blocks directory: %s" % dest)
+                conflicts.append(f"Directory blocks directory: {dest}")
         return conflicts
 
     def get_file_map(self, dest_root, ignore):
-        merge_map = {}
         kwargs = {"follow_nonexisting": True, "ignore": ignore}
-        for src, dest in traverse_tree(self._root, dest_root, **kwargs):
-            if not os.path.isdir(src):
-                merge_map[src] = dest
-        return merge_map
+        return {
+            src: dest
+            for src, dest in traverse_tree(self._root, dest_root, **kwargs)
+            if not os.path.isdir(src)
+        }
 
     def merge_directories(self, dest_root, ignore):
         for src, dest in traverse_tree(self._root, dest_root, ignore=ignore):
@@ -346,7 +346,7 @@ class LinkTree(object):
                     continue
 
                 if not os.path.isdir(dest):
-                    raise ValueError("File blocks directory: %s" % dest)
+                    raise ValueError(f"File blocks directory: {dest}")
 
                 # mark empty directories so they aren't removed on unmerge.
                 if not os.listdir(dest):
@@ -359,7 +359,7 @@ class LinkTree(object):
                 if not os.path.exists(dest):
                     continue
                 elif not os.path.isdir(dest):
-                    raise ValueError("File blocks directory: %s" % dest)
+                    raise ValueError(f"File blocks directory: {dest}")
 
                 # remove directory if it is empty.
                 if not os.listdir(dest):
@@ -391,10 +391,9 @@ class LinkTree(object):
         if ignore is None:
             ignore = lambda x: False
 
-        conflict = self.find_conflict(
+        if conflict := self.find_conflict(
             dest_root, ignore=ignore, ignore_file_conflicts=ignore_conflicts
-        )
-        if conflict:
+        ):
             raise SingleMergeConflictError(conflict)
 
         self.merge_directories(dest_root, ignore)
@@ -411,7 +410,7 @@ class LinkTree(object):
                 link(src, dst)
 
         for c in existing:
-            tty.warn("Could not merge: %s" % c)
+            tty.warn(f"Could not merge: {c}")
 
     def unmerge(self, dest_root, ignore=None, remove_file=remove_link):
         """Unlink all files in dest that exist in src.
@@ -432,7 +431,9 @@ class MergeConflictError(Exception):
 
 class SingleMergeConflictError(MergeConflictError):
     def __init__(self, path):
-        super(MergeConflictError, self).__init__("Package merge blocked by file: %s" % path)
+        super(MergeConflictError, self).__init__(
+            f"Package merge blocked by file: {path}"
+        )
 
 
 class MergeConflictSummary(MergeConflictError):

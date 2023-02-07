@@ -134,7 +134,7 @@ class ProcessController(object):
         time.sleep(self.sleep_time)
 
     def write(self, byte_string):
-        self.horizontal_line("write '%s'" % byte_string.decode("utf-8"))
+        self.horizontal_line(f"""write '{byte_string.decode("utf-8")}'""")
         os.write(self.controller_fd, byte_string)
 
     def wait(self, condition):
@@ -323,8 +323,6 @@ class PseudoShell(object):
         # wait for subprocess to be running and connected.
         while not ready.value:
             time.sleep(1e-5)
-            pass
-
         if kwargs.get("debug"):
             sys.stderr.write("pid:        %d\n" % os.getpid())
             sys.stderr.write("pgid:       %d\n" % os.getpgrp())

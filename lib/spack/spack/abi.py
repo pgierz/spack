@@ -44,10 +44,10 @@ class ABI(object):
         output = None
         if compiler.cxx:
             rungcc = Executable(compiler.cxx)
-            libname = "libstdc++." + dso_suffix
+            libname = f"libstdc++.{dso_suffix}"
         elif compiler.cc:
             rungcc = Executable(compiler.cc)
-            libname = "libgcc_s." + dso_suffix
+            libname = f"libgcc_s.{dso_suffix}"
         else:
             return None
         try:
@@ -57,15 +57,13 @@ class ABI(object):
             if Clang.default_version(rungcc.exe[0]) != "unknown":
                 return None
 
-            output = rungcc("--print-file-name=%s" % libname, output=str)
+            output = rungcc(f"--print-file-name={libname}", output=str)
         except ProcessError:
             return None
         if not output:
             return None
         libpath = os.path.realpath(output.strip())
-        if not libpath:
-            return None
-        return os.path.basename(libpath)
+        return os.path.basename(libpath) if libpath else None
 
     @memoized
     def _gcc_compiler_compare(self, pversion, cversion):
@@ -73,9 +71,7 @@ class ABI(object):
         are ABI compatible."""
         plib = self._gcc_get_libstdcxx_version(pversion)
         clib = self._gcc_get_libstdcxx_version(cversion)
-        if not plib or not clib:
-            return False
-        return plib == clib
+        return False if not plib or not clib else plib == clib
 
     def _intel_compiler_compare(self, pversion, cversion):
         """Returns true iff the intel version pversion and cversion

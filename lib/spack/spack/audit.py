@@ -68,12 +68,14 @@ class Error(object):
         self.details = tuple(details)
 
     def __str__(self):
-        return self.summary + "\n" + "\n".join(["    " + detail for detail in self.details])
+        return (
+            self.summary
+            + "\n"
+            + "\n".join([f"    {detail}" for detail in self.details])
+        )
 
     def __eq__(self, other):
-        if self.summary != other.summary or self.details != other.details:
-            return False
-        return True
+        return self.summary == other.summary and self.details == other.details
 
     def __hash__(self):
         value = (self.summary, self.details)
@@ -356,7 +358,8 @@ def _search_for_reserved_attributes_names_in_packages(pkgs, error_cls):
                 "which is reserved for Spack internal use"
             )
             definitions = [
-                "defined in '{}'".format(x[0].__module__) for x in name_definitions[name]
+                f"defined in '{x[0].__module__}'"
+                for x in name_definitions[name]
             ]
             errors.append(error_cls(error_msg.format(pkg_name, name), definitions))
 
@@ -369,7 +372,7 @@ def _ensure_all_package_names_are_lowercase(pkgs, error_cls):
     badname_regex, errors = re.compile(r"[_A-Z]"), []
     for pkg_name in pkgs:
         if badname_regex.search(pkg_name):
-            error_msg = "Package name '{}' is either lowercase or conatine '_'".format(pkg_name)
+            error_msg = f"Package name '{pkg_name}' is either lowercase or conatine '_'"
             errors.append(error_cls(error_msg, []))
     return errors
 
@@ -384,8 +387,8 @@ def _ensure_packages_are_pickeleable(pkgs, error_cls):
         try:
             pickle.dumps(pkg)
         except Exception as e:
-            error_msg = "Package '{}' failed to pickle".format(pkg_name)
-            details = ["{}".format(str(e))]
+            error_msg = f"Package '{pkg_name}' failed to pickle"
+            details = [f"{str(e)}"]
             errors.append(error_cls(error_msg, details))
     return errors
 
@@ -400,16 +403,16 @@ def _ensure_packages_are_unparseable(pkgs, error_cls):
         try:
             source = ph.canonical_source(pkg_name, filter_multimethods=False)
         except Exception as e:
-            error_msg = "Package '{}' failed to unparse".format(pkg_name)
-            details = ["{}".format(str(e))]
+            error_msg = f"Package '{pkg_name}' failed to unparse"
+            details = [f"{str(e)}"]
             errors.append(error_cls(error_msg, details))
             continue
 
         try:
             compile(source, "internal", "exec", ast.PyCF_ONLY_AST)
         except Exception as e:
-            error_msg = "The unparsed package '{}' failed to compile".format(pkg_name)
-            details = ["{}".format(str(e))]
+            error_msg = f"The unparsed package '{pkg_name}' failed to compile"
+            details = [f"{str(e)}"]
             errors.append(error_cls(error_msg, details))
 
     return errors
@@ -428,7 +431,7 @@ def _ensure_all_versions_can_produce_a_fetcher(pkgs, error_cls):
                 assert spack.fetch_strategy.for_package_version(pkg, version)
         except Exception as e:
             error_msg = "The package '{}' cannot produce a fetcher for some of its versions"
-            details = ["{}".format(str(e))]
+            details = [f"{str(e)}"]
             errors.append(error_cls(error_msg.format(pkg_name), details))
     return errors
 
@@ -448,8 +451,9 @@ def _ensure_docstring_and_no_fixme(pkgs, error_cls):
         filename = spack.repo.path.filename_for_package_name(pkg_name)
         with open(filename, "r") as package_file:
             for i, line in enumerate(package_file):
-                pattern = next((r for r in fixme_regexes if r.search(line)), None)
-                if pattern:
+                if pattern := next(
+                    (r for r in fixme_regexes if r.search(line)), None
+                ):
                     details.append(
                         "%s:%d: boilerplate needs to be removed: %s" % (filename, i, line.strip())
                     )
@@ -520,10 +524,7 @@ def _ensure_env_methods_are_ported_to_builders(pkgs, error_cls):
 
         for method_name in ("setup_build_environment", "setup_dependent_build_environment"):
             if hasattr(pkg_cls, method_name):
-                msg = (
-                    "Package '{}' need to move the '{}' method from the package class to the"
-                    " appropriate builder class".format(pkg_name, method_name)
-                )
+                msg = f"Package '{pkg_name}' need to move the '{method_name}' method from the package class to the appropriate builder class"
                 errors.append(error_cls(msg, []))
 
     return errors
@@ -639,7 +640,7 @@ def _unknown_variants_in_dependencies(pkgs, error_cls):
                 summary = pkg_name + ": unknown package '{0}' in " "'depends_on' directive".format(
                     dependency_name
                 )
-                details = [" in " + filename]
+                details = [f" in {filename}"]
                 errors.append(error_cls(summary=summary, details=details))
                 continue
 
@@ -657,10 +658,13 @@ def _unknown_variants_in_dependencies(pkgs, error_cls):
                         error_msg = str(e).strip()
                         if isinstance(e, KeyError):
                             error_msg = "the variant {0} does not " "exist".format(error_msg)
-                        error_msg += " in package '" + dependency_name + "'"
+                        error_msg += f" in package '{dependency_name}'"
 
                         errors.append(
-                            error_cls(summary=summary, details=[error_msg, "in " + filename])
+                            error_cls(
+                                summary=summary,
+                                details=[error_msg, f"in {filename}"],
+                            )
                         )
 
     return errors
@@ -727,7 +731,7 @@ def _version_constraints_are_satisfiable_by_some_version_in_repo(pkgs, error_cls
                 summary = (
                     "{0}: dependency on {1} cannot be satisfied " "by known versions of {1.name}"
                 ).format(pkg_name, s)
-                details = ["happening in " + filename]
+                details = [f"happening in {filename}"]
                 if dependency_pkg_cls is not None:
                     details.append(
                         "known versions of {0.name} are {1}".format(
@@ -760,7 +764,7 @@ def _analyze_variants_in_directive(pkg, constraint, directive, error_cls):
             if isinstance(e, KeyError):
                 error_msg = "the variant {0} does not exist".format(error_msg)
 
-            err = error_cls(summary=summary, details=[error_msg, "in " + filename])
+            err = error_cls(summary=summary, details=[error_msg, f"in {filename}"])
 
             errors.append(err)
 

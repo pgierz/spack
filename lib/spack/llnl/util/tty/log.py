@@ -318,16 +318,16 @@ class FileWrapper(object):
         self.file = None
 
     def unwrap(self):
-        if self.open:
-            if self.file_like:
-                self.file = open(self.file_like, "w", encoding="utf-8")
-            else:
-                self.file = io.StringIO()
-            return self.file
-        else:
+        if not self.open:
             # We were handed an already-open file object. In this case we also
             # will not actually close the object when requested to.
             return self.file_like
+        self.file = (
+            open(self.file_like, "w", encoding="utf-8")
+            if self.file_like
+            else io.StringIO()
+        )
+        return self.file
 
     def close(self):
         if self.file:
@@ -349,10 +349,7 @@ class MultiProcessFd(object):
 
     @property
     def fd(self):
-        if self._connection:
-            return self._connection._handle
-        else:
-            return self._fd
+        return self._connection._handle if self._connection else self._fd
 
     def close(self):
         if self._connection:
@@ -923,11 +920,7 @@ def _writer_daemon(
     # 2. Python 3.x before 3.7 does not open with UTF-8 encoding by default
     in_pipe = os.fdopen(read_multiprocess_fd.fd, "r", 1, encoding="utf-8")
 
-    if stdin_multiprocess_fd:
-        stdin = os.fdopen(stdin_multiprocess_fd.fd)
-    else:
-        stdin = None
-
+    stdin = os.fdopen(stdin_multiprocess_fd.fd) if stdin_multiprocess_fd else None
     # list of streams to select from
     istreams = [in_pipe, stdin] if stdin else [in_pipe]
     force_echo = False  # parent can force echo for certain output

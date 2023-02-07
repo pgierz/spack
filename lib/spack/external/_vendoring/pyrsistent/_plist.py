@@ -122,11 +122,7 @@ class _PListBase(object):
             right_list = right_list.rest
             i += 1
 
-        if not right_list:
-            # Just a small optimization in the cases where no split occurred
-            return self, _EMPTY_PLIST
-
-        return lb.build(), right_list
+        return (lb.build(), right_list) if right_list else (self, _EMPTY_PLIST)
 
     def __iter__(self):
         li = self
@@ -135,10 +131,11 @@ class _PListBase(object):
             li = li.rest
 
     def __lt__(self, other):
-        if not isinstance(other, _PListBase):
-            return NotImplemented
-
-        return tuple(self) < tuple(other)
+        return (
+            tuple(self) < tuple(other)
+            if isinstance(other, _PListBase)
+            else NotImplemented
+        )
 
     def __eq__(self, other):
         """
@@ -171,7 +168,9 @@ class _PListBase(object):
             return plist(tuple(self)[index])
 
         if not isinstance(index, Integral):
-            raise TypeError("'%s' object cannot be interpreted as an index" % type(index).__name__)
+            raise TypeError(
+                f"'{type(index).__name__}' object cannot be interpreted as an index"
+            )
 
         if index < 0:
             # NB: O(n)!

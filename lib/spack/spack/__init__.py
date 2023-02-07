@@ -16,7 +16,7 @@ def __try_int(v):
 
 
 #: (major, minor, micro, dev release) tuple
-spack_version_info = tuple([__try_int(v) for v in __version__.split(".")])
+spack_version_info = tuple(__try_int(v) for v in __version__.split("."))
 
 
 __all__ = ["spack_version_info", "spack_version"]

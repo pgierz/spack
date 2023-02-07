@@ -136,18 +136,14 @@ def set_stacktrace(flag):
 def process_stacktrace(countback):
     """Gives file and line frame 'countback' frames from the bottom"""
     st = traceback.extract_stack()
-    # Not all entries may be spack files, we have to remove those that aren't.
-    file_list = []
-    for frame in st:
-        # Check that the file is a spack file
-        if frame[0].find(os.path.sep + "spack") >= 0:
-            file_list.append(frame[0])
+    file_list = [
+        frame[0] for frame in st if frame[0].find(f"{os.path.sep}spack") >= 0
+    ]
     # We use commonprefix to find what the spack 'root' directory is.
     root_dir = os.path.commonprefix(file_list)
     root_len = len(root_dir)
     st_idx = len(st) - countback - 1
-    st_text = "%s:%i " % (st[st_idx][0][root_len:], st[st_idx][1])
-    return st_text
+    return "%s:%i " % (st[st_idx][0][root_len:], st[st_idx][1])
 
 
 def show_pid():
@@ -169,12 +165,10 @@ def msg(message, *args, **kwargs):
         return
 
     if isinstance(message, Exception):
-        message = "%s: %s" % (message.__class__.__name__, str(message))
+        message = f"{message.__class__.__name__}: {str(message)}"
 
     newline = kwargs.get("newline", True)
-    st_text = ""
-    if _stacktrace:
-        st_text = process_stacktrace(2)
+    st_text = process_stacktrace(2) if _stacktrace else ""
     if newline:
         cprint("@*b{%s==>} %s%s" % (st_text, get_timestamp(), cescape(_output_filter(message))))
     else:
@@ -185,7 +179,7 @@ def msg(message, *args, **kwargs):
 
 def info(message, *args, **kwargs):
     if isinstance(message, Exception):
-        message = "%s: %s" % (message.__class__.__name__, str(message))
+        message = f"{message.__class__.__name__}: {str(message)}"
 
     format = kwargs.get("format", "*b")
     stream = kwargs.get("stream", sys.stdout)
@@ -193,9 +187,7 @@ def info(message, *args, **kwargs):
     break_long_words = kwargs.get("break_long_words", False)
     st_countback = kwargs.get("countback", 3)
 
-    st_text = ""
-    if _stacktrace:
-        st_text = process_stacktrace(st_countback)
+    st_text = process_stacktrace(st_countback) if _stacktrace else ""
     cprint(
         "@%s{%s==>} %s%s"
         % (format, st_text, get_timestamp(), cescape(_output_filter(str(message)))),
@@ -235,7 +227,7 @@ def error(message, *args, **kwargs):
 
     kwargs.setdefault("format", "*r")
     kwargs.setdefault("stream", sys.stderr)
-    info("Error: " + str(message), *args, **kwargs)
+    info(f"Error: {str(message)}", *args, **kwargs)
 
 
 def warn(message, *args, **kwargs):
@@ -244,7 +236,7 @@ def warn(message, *args, **kwargs):
 
     kwargs.setdefault("format", "*Y")
     kwargs.setdefault("stream", sys.stderr)
-    info("Warning: " + str(message), *args, **kwargs)
+    info(f"Warning: {str(message)}", *args, **kwargs)
 
 
 def die(message, *args, **kwargs):
@@ -254,15 +246,15 @@ def die(message, *args, **kwargs):
 
 
 def get_number(prompt, **kwargs):
-    default = kwargs.get("default", None)
-    abort = kwargs.get("abort", None)
+    default = kwargs.get("default")
+    abort = kwargs.get("abort")
 
     if default is not None and abort is not None:
-        prompt += " (default is %s, %s to abort) " % (default, abort)
+        prompt += f" (default is {default}, {abort} to abort) "
     elif default is not None:
-        prompt += " (default is %s) " % default
+        prompt += f" (default is {default}) "
     elif abort is not None:
-        prompt += " (%s to abort) " % abort
+        prompt += f" ({abort} to abort) "
 
     number = None
     while number is None:
@@ -285,7 +277,7 @@ def get_number(prompt, **kwargs):
 
 
 def get_yes_or_no(prompt, **kwargs):
-    default_value = kwargs.get("default", None)
+    default_value = kwargs.get("default")
 
     if default_value is None:
         prompt += " [y/n] "
@@ -299,16 +291,15 @@ def get_yes_or_no(prompt, **kwargs):
     result = None
     while result is None:
         msg(prompt, newline=False)
-        ans = input().lower()
-        if not ans:
+        if ans := input().lower():
+            if ans in ["y", "yes"]:
+                result = True
+            elif ans in ["n", "no"]:
+                result = False
+        else:
             result = default_value
             if result is None:
                 print("Please enter yes or no.")
-        else:
-            if ans == "y" or ans == "yes":
-                result = True
-            elif ans == "n" or ans == "no":
-                result = False
     return result
 
 
@@ -323,7 +314,7 @@ def hline(label=None, **kwargs):
     max_width = kwargs.pop("max_width", 64)
     if kwargs:
         raise TypeError(
-            "'%s' is an invalid keyword argument for this function." % next(kwargs.iterkeys())
+            f"'{next(kwargs.iterkeys())}' is an invalid keyword argument for this function."
         )
 
     rows, cols = terminal_size()
@@ -358,12 +349,10 @@ def terminal_size():
 
         rc = ioctl_gwinsz(0) or ioctl_gwinsz(1) or ioctl_gwinsz(2)
         if not rc:
-            try:
+            with contextlib.suppress(BaseException):
                 fd = os.open(os.ctermid(), os.O_RDONLY)
                 rc = ioctl_gwinsz(fd)
                 os.close(fd)
-            except BaseException:
-                pass
         if not rc:
             rc = (os.environ.get("LINES", 25), os.environ.get("COLUMNS", 80))
 

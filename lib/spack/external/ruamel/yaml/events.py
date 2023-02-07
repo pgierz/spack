@@ -24,7 +24,7 @@ class Event(object):
                                for key in attributes])
         if self.comment not in [None, CommentCheck]:
             arguments += ', comment={!r}'.format(self.comment)
-        return '%s(%s)' % (self.__class__.__name__, arguments)
+        return f'{self.__class__.__name__}({arguments})'
 
 
 class NodeEvent(Event):

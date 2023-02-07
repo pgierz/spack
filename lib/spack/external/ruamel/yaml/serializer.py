@@ -136,32 +136,19 @@ class Serializer(object):
                 comment = node.comment
                 # print('comment >>>>>>>>>>>>>.', comment, node.flow_style)
                 end_comment = None
-                seq_comment = None
-                if node.flow_style is True:
-                    if comment:  # eol comment on flow style sequence
-                        seq_comment = comment[0]
-                        # comment[0] = None
-                if comment and len(comment) > 2:
-                    end_comment = comment[2]
-                else:
-                    end_comment = None
+                seq_comment = comment[0] if node.flow_style is True and comment else None
+                end_comment = comment[2] if comment and len(comment) > 2 else None
                 self.emit(SequenceStartEvent(alias, node.tag, implicit,
                                              flow_style=node.flow_style,
                                              comment=node.comment))
-                index = 0
-                for item in node.value:
+                for index, item in enumerate(node.value):
                     self.serialize_node(item, node, index)
-                    index += 1
                 self.emit(SequenceEndEvent(comment=[seq_comment, end_comment]))
             elif isinstance(node, MappingNode):
                 implicit = (node.tag == self.resolve(MappingNode, node.value, True))
                 comment = node.comment
                 end_comment = None
-                map_comment = None
-                if node.flow_style is True:
-                    if comment:  # eol comment on flow style sequence
-                        map_comment = comment[0]
-                        # comment[0] = None
+                map_comment = comment[0] if node.flow_style is True and comment else None
                 if comment and len(comment) > 2:
                     end_comment = comment[2]
                 self.emit(MappingStartEvent(alias, node.tag, implicit,

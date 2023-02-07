@@ -108,12 +108,7 @@ def _create(pkg):
     # See e.g. AspellDictPackage as an example.
     base_cls = getattr(pkg, builder_cls_name, default_builder_cls)
 
-    # From here on we define classes to construct a special builder that adapts to the
-    # old, single class, package format. The adapter forwards any call or access to an
-    # attribute related to the installation procedure to a package object wrapped in
-    # a class that falls-back on calling the base builder if no override is found on the
-    # package. The semantic should be the same as the method in the base builder were still
-    # present in the base class of the package.
+
 
     class _ForwardToBaseBuilder(object):
         def __init__(self, wrapped_pkg_object, root_builder):
@@ -123,7 +118,7 @@ def _create(pkg):
             package_cls = type(wrapped_pkg_object)
             wrapper_cls = type(self)
             bases = (package_cls, wrapper_cls)
-            new_cls_name = package_cls.__name__ + "Wrapper"
+            new_cls_name = f"{package_cls.__name__}Wrapper"
             # Forward attributes that might be monkey patched later
             new_cls = type(
                 new_cls_name,
@@ -144,6 +139,7 @@ def _create(pkg):
             if item in super(type(self.root_builder), self.root_builder).phases:
                 result = _PhaseAdapter(self.root_builder, result)
             return result
+
 
     def forward_method_to_getattr(fn_name):
         def __forward(self, *args, **kwargs):
@@ -225,7 +221,7 @@ class PhaseCallbacksMeta(type):
     of callbacks is attached to the class being defined.
     """
 
-    def __new__(mcs, name, bases, attr_dict):
+    def __new__(cls, name, bases, attr_dict):
         for temporary_stage in (_RUN_BEFORE, _RUN_AFTER):
             staged_callbacks = temporary_stage.callbacks
 
@@ -250,7 +246,7 @@ class PhaseCallbacksMeta(type):
             attr_dict[temporary_stage.attribute_name] = staged_callbacks[:] + callbacks_from_base
             del temporary_stage.callbacks[:]
 
-        return super(PhaseCallbacksMeta, mcs).__new__(mcs, name, bases, attr_dict)
+        return super(PhaseCallbacksMeta, cls).__new__(cls, name, bases, attr_dict)
 
     @staticmethod
     def run_after(phase, when=None):
@@ -359,7 +355,7 @@ class _PackageAdapterMeta(BuilderMeta):
 
         return property(_adapter)
 
-    def __new__(mcs, name, bases, attr_dict):
+    def __new__(cls, name, bases, attr_dict):
         # Add ways to intercept methods and attribute calls and dispatch
         # them first to a package object
         default_builder_cls = bases[0]
@@ -382,7 +378,7 @@ class _PackageAdapterMeta(BuilderMeta):
         attr_dict[_RUN_BEFORE.attribute_name] = combine_callbacks(_RUN_BEFORE.attribute_name)
         attr_dict[_RUN_AFTER.attribute_name] = combine_callbacks(_RUN_AFTER.attribute_name)
 
-        return super(_PackageAdapterMeta, mcs).__new__(mcs, name, bases, attr_dict)
+        return super(_PackageAdapterMeta, cls).__new__(cls, name, bases, attr_dict)
 
 
 class InstallationPhase(object):

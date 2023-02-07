@@ -282,10 +282,7 @@ class Token(t.NamedTuple):
         if self.type == expr:
             return True
 
-        if ":" in expr:
-            return expr.split(":", 1) == [self.type, self.value]
-
-        return False
+        return expr.split(":", 1) == [self.type, self.value] if ":" in expr else False
 
     def test_any(self, *iterable: str) -> bool:
         """Test against multiple token expressions."""
@@ -366,10 +363,7 @@ class TokenStream:
         """Perform the token test and return the token if it matched.
         Otherwise the return value is `None`.
         """
-        if self.current.test(expr):
-            return next(self)
-
-        return None
+        return next(self) if self.current.test(expr) else None
 
     def skip_if(self, expr: str) -> bool:
         """Like :meth:`next_if` but only returns `True` or `False`."""
@@ -692,7 +686,7 @@ class Lexer:
 
         if state is not None and state != "root":
             assert state in ("variable", "block"), "invalid state"
-            stack.append(state + "_begin")
+            stack.append(f"{state}_begin")
 
         statetokens = self.rules[stack[-1]]
         source_length = len(source)
@@ -750,11 +744,10 @@ class Lexer:
                             # The start of text between the last newline and the tag.
                             l_pos = text.rfind("\n") + 1
 
-                            if l_pos > 0 or line_starting:
-                                # If there's only whitespace between the newline and the
-                                # tag, strip it.
-                                if not lstrip_unless_re.search(text, l_pos):
-                                    groups = [text[:l_pos], *groups[1:]]
+                            if (
+                                l_pos > 0 or line_starting
+                            ) and not lstrip_unless_re.search(text, l_pos):
+                                groups = [text[:l_pos], *groups[1:]]
 
                     for idx, token in enumerate(tokens):
                         # failure group
@@ -784,7 +777,6 @@ class Lexer:
                             lineno += data.count("\n") + newlines_stripped
                             newlines_stripped = 0
 
-                # strings as token just are yielded as it.
                 else:
                     data = m.group()
 
@@ -856,8 +848,6 @@ class Lexer:
                 # publish new function and start again
                 pos = pos2
                 break
-            # if loop terminated without break we haven't found a single match
-            # either we are at the end of the file or we have a problem
             else:
                 # end of text
                 if pos >= source_length:

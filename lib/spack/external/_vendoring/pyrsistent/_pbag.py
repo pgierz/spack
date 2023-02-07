@@ -113,7 +113,7 @@ class PBag(object):
         [1, 2]
         """
         for elt, count in self._counts.iteritems():
-            for i in range(count):
+            for _ in range(count):
                 yield elt
 
     def __contains__(self, elt):
@@ -258,9 +258,11 @@ def pbag(elements):
     >>> pbag([1, 2, 3, 2])
     pbag([1, 2, 2, 3])
     """
-    if not elements:
-        return _EMPTY_PBAG
-    return PBag(reduce(_add_to_counters, elements, pmap()))
+    return (
+        PBag(reduce(_add_to_counters, elements, pmap()))
+        if elements
+        else _EMPTY_PBAG
+    )
 
 
 _EMPTY_PBAG = PBag(pmap())

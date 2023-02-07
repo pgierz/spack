@@ -152,8 +152,7 @@ class Reader(object):
         u'[^\x09\x0A\x0D\x20-\x7E\x85\xA0-\uD7FF\uE000-\uFFFD]')
 
     def check_printable(self, data):
-        match = self.NON_PRINTABLE.search(data)
-        if match:
+        if match := self.NON_PRINTABLE.search(data):
             character = match.group()
             position = self.index+(len(self.buffer)-self.pointer)+match.start()
             raise ReaderError(self.name, position, ord(character),
@@ -172,13 +171,10 @@ class Reader(object):
                     data, converted = self.raw_decode(self.raw_buffer,
                                                       'strict', self.eof)
                 except UnicodeDecodeError as exc:
-                    if PY3:
-                        character = self.raw_buffer[exc.start]
-                    else:
-                        character = exc.object[exc.start]
+                    character = self.raw_buffer[exc.start] if PY3 else exc.object[exc.start]
                     if self.stream is not None:
                         position = self.stream_pointer - \
-                            len(self.raw_buffer) + exc.start
+                                len(self.raw_buffer) + exc.start
                     else:
                         position = exc.start
                     raise ReaderError(self.name, position, character,
